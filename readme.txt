@@ -6,3 +6,4 @@ Creating a new branch is quick and simple.
 merge by --no-ff.
 dev branch.
 dev1 branch.
+dev2 branch.
