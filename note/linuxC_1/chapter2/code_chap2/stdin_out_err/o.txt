@@ -1,0 +1,4 @@
+please enter a number:
+a=-7
+argc[0]=./main
+argc[1]=23

@@ -1,0 +1,350 @@
+				文件I/O操作
+	使用少量的函数就可以对文件和设备进行访问和控制，这些函数称为系统调用，由unix(linux)直接提供
+	操作系统的内核是一组设备驱动程序，设备驱动程序为了向用户提供一个一致的接口，设备驱动程序封装了所有与硬件相关的特性，成为对系统硬件进行控制的底层接口
+	
+	用于访问设备驱动程序的底层函数(系统调用)：
+	open(),read(),write(),close(),ioctl()
+
+	直接使用底层函数进行输入输出操作会使其效率非常低
+	原因：
+		1.使用系统调用会影响性能：系统调用的开销大于库函数调用，执行系统调用时会从用户区到内核区再返回用户区，减少开销的方法是尽量少用系统调用，用的时候尽可能让系统调用完成更多的工作
+		2.硬件会限制对底层系统调用一次所能读写的数据块大小：若试图读写的数据不是一个数据块大小，依然执行，数据块就会存在碎片，使得利用率不高
+	解决方法：
+		可以使用标准函数库中的读写函数，标准I/O库具有输出缓冲功能，使得用户可以高效的写任意长度的数据块，库函数则会在数据满足数据块大小时调用并执行底层系统调用函数，极大降低了系统的开销
+
+	int open(const char* pathname,int oflags);
+	int open(const char* pathname,int oflags,mode_t mode);
+	头文件：fcntl.h  sys/types.h sys/stat.h
+	函数功能：建立了一条到文件或设备的访问路径，如果调用成功，它将返回一个可以被read,write函数和其他系统调用使用的文件描述符(惟一的)
+	pathname:准备打开的文件或设备的名字
+	oflags:用于指定打开文件所采取的动作，必须指定以下访问模式之一
+		O_RDONLY	以只读方式打开
+		O_WRONLY	以只写方式打开
+		O_RDWR		以读写方式打开
+		还可以包括一下模式组合(用 “按位或” 操作)
+		O_APPEND:把写入的数据追加在文件末尾
+		O_TRUNC:把文件长度设置为零,丢弃已有的内容
+		O_CREAT:如果需要按参数mode给出的访问模式创建文件
+		O_EXCL:与O_CREAT一起使用确保创建出文件，由于原子操作，故可防止多程序同时创建同一个文件，若文件已存在，则open调用失败
+	mode:mode的值需要与当时的用户的掩码的反值做AND操作(chmod 命令不需与umask做运算)
+		eg.umask=0022  ！umask=7755
+		   mode=0777    umask&&mode=0755
+		   则文件的实际权限是：0755
+
+	creat()
+
+	int close(int fildes);
+	头文件：unistd.h
+	函数功能：终止文件描述符与其对应文件的关联，即文件描述符释放并能重新使用
+	成功返回0,失败返回-1
+	返回值比较重要，在网络文件系统中，可能不会在关闭之前报告写操作中出现的错误，这是因为在写操作时，数据可能未被确认写入
+
+	size_t read(int fildes,void *buf,size_t nbytes);
+	头文件：unistd.h
+	函数功能：从文件描述符与之关联的文件中读n个字节数据到数据区buf中，返回实际读入的字节数
+	返回0,表示没有读入任何数据,以达到文件的末尾;返回-1,表示read调用出错
+
+	size_t write(int fildes,const void *buf,size_t nbytes);
+	头文件：unistd.h
+	函数功能：将缓冲区buf中的前n个字节写入与文件描述符fildes相关联的文件中，返回实际的写入字节数
+	返回0,表示没有写入任何数据;返回-1,表示write调用出错，错误代码保存在全局变量errno中
+	
+
+
+	标准I/O库及其头文件stdio.h为底层I/O系统调用提供了一个通用的接口，在标准I/O中，与底层文件描述符对应的是流，它被实现为指向结构FILE的指针
+	在启动程序时，有三个文件流自动打开，即stdin,stdout,stderr 均在stdio.h中定义的，分别代表标准输入，标准输出，标准错误输出，与底层文件描述符0,1,2相对应
+	标准I/O库函数：stdio.h
+	fopen(),fclose(),fread(),fwrite(),
+	fflush(),
+	fseek(),
+	fgetc(),getc(),getchar(),
+	fgets(),gets(),
+	fputc(),putc(),putchar(),
+	printf(),fprintf(),sprintf(),
+	scanf(),fscanf(),sscanf(),
+
+	FILE *fopen(const char *filename,const char *mode);
+	filename:指定的文件，并将其于一个文件流关联起来
+	mode:指定文件的打开方式
+		“r”或“rb”
+		"w"或"w/b"
+	成功返回一个非空的FILE*的指针，失败返回NULL (其值在stdio.h中定义)
+	可用的文件流数量与文件描述符一样都有限制，由FOPEN_MAX定义(在stdio.h中)在linux中通常为16
+	
+	size_t fread(void *ptr,size_t size,size_t nitems,FILE *stream);
+	函数功能：从文件流stream读数据到ptr指向的数据缓冲区中
+	size:每个数据记录的长度
+	nitems:传输的记录个数
+	返回值是成功读到缓冲区中的数据记录个数(非字节数)，
+	
+	size_t fwrite(const void *ptr,size_t size,size_t nitems,FILE *stream);
+	函数功能：从指定缓冲区中取数据写到文件流stream中
+	返回值是成功写入的记录个数
+	
+	int fclose(FILE *stream);
+	函数功能：关闭文件流，使尚未写出的数据都写出，确保缓冲区中的数据全部写出
+	程序正常结束时，会自动对所有打开的文件调用fclose函数
+	调用fclose函数隐含执行了一次flush操作，不必在调用fclose之前调用fflush
+
+	int fflush(FILE *stream);
+	函数功能：将文件流中的所有未写出的数据立刻写出
+
+	int fseek(FILE *stream,long int offset,int whence);
+	函数功能：在文件流中为下一次读写操作指定位置
+	返回值为0,表示成功，-1 表示失败并设置errno指出错误
+	
+	int fgetc(FILE *stream);
+	int getc(FILE *stream);
+	int getchar();//相当于getc(stdin)从标准输入中读取下一个字符
+	函数功能：从文件流stream中取出下一字节并作为一个字符返回，达到文件尾或出现错误时，返回EOF(-1),可通过ferror或feof来区分
+	
+	int fputc(int c,FILE *stream);
+	int putc(int c,FILE *stream);
+	int putchar(int c);//相当于putc(c,stdout)把单个字符写到标准输出
+	函数功能：把一个字符写到输出文件流中，返回写入的值，失败返回EOF
+	注意：putchar getchar都是将字符作为int类型使用，这就允许文件尾(EOF)标识取值-1(超出字符数字编码范围的值)
+	
+	char *fgets(char *s,int n,FILE *stream);
+	char *gets(char *s);
+	函数功能：
+	fgets:从输入文件流stream中读取一个字符串
+	gets:从标准输入中读取数据并丢弃遇到的换行符，在接收字符串的尾部加上一个null字节
+	返回值：
+	fgets成功返回一个指向字符串s的指针;
+	若文件流已经达到文件末尾，会设置这个文件流的EOF标识并返回一个空指针;
+	若出现读错误，则返回一个空指针并设置errno以指出错误类型
+	fgets函数最多能够传输n-1个字符，必须把空字节加上表示结束字符串
+	gets函数对传输的字符个数没有限制，故可能会溢出自己的传输缓冲区
+
+	int printf(const char *format,....);
+	int sprintf(char *s,const char *format,....);
+	int fprintf(FILE *stream,const char *format,....);
+	printf:将输出送至标准输出
+	返回一个整数以表明它输出的字符个数
+	sprintf:将输出以及一个结尾空字符送至字符数组s中
+	返回一个整数以表明它输出的字符个数,不算结尾的空字符
+	fprintf:将输出送到一个指定的文件流stream
+	返回一个整数以表明写到文件中的字符个数	
+	失败都返回-1，并将失败原因写入errno中
+	
+
+
+				文件属性管理
+	int stat(const char*path,struct stat*buf);
+	int lstat(const char*path,struct stat*buf);
+	int fstat(int filedes,struct stat*buf);
+	int fstatat(int fd,const char*restrict pathname,struct stat*restrict buf,int flag)
+	以上四个函数都是在库函数stat.h中(/usr/include/x86_64-linux-gnu/sys/stat.h)
+	用途：都是读取文件的属性，并填充到buf指向的结构stat中，stat函数是从inode结构体中获取文件信息的(eg.struct stat结构体中的st_mode就是inode结构体中的i_mode)
+	说明：
+	1.stat与lstat函数都是读取path参数所指定文件的文件属性并将其填充到buf参数所指向的结构体中，对于符号链接文件，lstat返回符号连接的文件属性，stat返回符号链接引用文件的文件属性
+	2.对于fstatat中的flag参数在默认下是返回符号链接所指向实际文件的信息，若flag表示不跟随符号链接，则返回的是符号链接本身的信息，flag控制着是否跟随符号链接;若pathname是一个绝对路径，则fd会被忽略;
+	3.stat数据结构是linux中用来描述文件属性的重要数据结构信息，其结构体如下：
+	struct stat{
+		mode_t st_mode;	文件类型与访问权限 mode_t是十六位的
+		ino_t st_ino;	索引节点号
+		dev_t st_dev;	文件主，次设备号信息
+      每个文件系统所在的存储设备都由其主，次设备号表示，主设备号标识设备驱动，次设备号标识特定的子设
+		dev_t st_rdev;	设备文件的设备号
+      只有字符/块特殊文件才有此值，表示实际设备的设备号
+		nlink_t st_nlink;	硬链接数
+		uid_t st_uid;	文件的所有者用户ID	
+		gid_t st_gid;	文件的所属组ID
+		off_t st_size;	文件的大小(/B)
+	对于普通文件(表示其大小)，目录文件(通常为一个常数)，符号文件(表示路径名的长度)有意义
+		time_t st_atime;	最后一次访问该文件的时间	
+		time_t st_mtime;	最后一次修改文件的时间
+		time_t st_ctime;	最后一次修改文件状态信息(即节点信息)的时间
+		blksize_t st_blksize;	？		
+		blkcn_t st_blocks;	？
+	};
+	4.st_mode主要包括3部分信息：
+		1.15~12位保存文件类型
+		linux文件类型(七种)：
+		普通文件(-),目录文件(d),字符设备文件(c),块设备文件(b),管道文件(p),符号链接文件(l),套接口文件(s)
+		使用(15,14,13,12)这四位表示该文件类型，即二进制对应如下：
+		1000(-),0100(d),0010(c),0110(b),0001(p),1010(l),1100(s)
+		八进制对应如下：
+		010(-),004(d),002(c),006(b),001(p),012(l),014(s)
+		十进制分别8,4,2,6,1,10,12(该信息在/usr/include/x86_64-linux-gnu/bits/stat.h中)
+		2.11~9位保存执行文件时设置的信息
+			(11 10 9)=(设置用户ID位，设置组ID位，粘着位)
+		粘着位：若可执行文件的此位被设置了，那该程序被第一次执行并结束时，该程序的进程被保存在交换区中，使得下次执行该程序时能较快的装入内存，如今大多系统都有虚存系统以及快速文件系统，所以不再使用此粘着位了
+		3.8~0位保存文件访问权限
+			文件U权限(2,1,0)=(R,W,X)
+			文件G权限(5,4,3)=(R,W,X)
+			文件O权限(8,7,6)=(R,W,X)
+	注意：
+		1.当打开一个文件时，对包含该文件的每一个目录都应该具有执行权限
+		2.如果要删除一个文件，必须对包含该文件的目录有写权限和执行权限
+		3.进程每次打开，删除，创建一个文件时，内核对该文件进行访问权限测试
+	
+	int truncate(const char*pathname,off_t length);
+	int ftruncate(int fd,off_t length);
+	用途：用于改变文件长度
+	说明：
+	1.length为文件的新长度，文件以前长度大于length时，超过的该长度的数据将不复存在，小于时，在文件以前长度到length之间形成空洞，读该区域为0
+	2.函数成功返回0，失败-1
+
+	struct passwd* getpwuid(uid_t uid);sys/types.h,pwd.h
+	用途：输入用户ID，返回用户属性信息
+	说明：
+	struct passwd{
+		char *pw_name;
+		char *pw_passwd;
+		_uid_t pw_uid;
+		_gid_t pw_gid;
+		char *pw_gecos;//真实名
+		char *pw_dir;//主目录
+		char *pw_shell;
+	}
+	
+	struct passwd* getgrgid(gid_t gid);sys/types.h,grp.h
+	用途：输入用户组ID，返回用户组属性信息
+	说明：
+	struct group{
+		char *gr_name;	
+		char *gr_passwd;
+		gid_t gr_uid;//组ID
+		char **gr_mem;//组成员账号
+	}
+
+
+
+
+
+
+				文件权限管理
+linux系统中通过进程的有效用户ID和有效用户组ID来决定进程对系统资源的访问权限
+	实际用户/用户组ID：即决定文件实际属于哪里，表示正在执行进程的是哪个用户/组
+	有效用户/用户组/附加组ID：用户文件权限检查,表示以谁的名义来执行这个进程
+	注：通常情况下，有效(ID)=实际(ID),即默认总是以进程的实际执行者的名义来执行这些程序，判断程序的系统资源的访问权限
+	文件中的设置用户ID和设置组ID是在stat结构体成员st_mode中，即st_mode有16位
+	分别是:
+	(11 10 9)=(设置用户ID位，设置组ID位，粘着位),可用常量S_ISUID(2048),S_ISGID(1024)测试
+	可执行文件可以设置特殊的文件属性，即通过设置用户/组ID位来设置，定义为：
+	当执行此文件时，进程的有效用户/组设置为此文件的所属用户/组
+	如何使用命令设置“设置用户ID位”：
+	chmod u+s filename 将“设置用户ID位”设为有效
+	chmod g+s filename ....... 组ID位..........
+	chmod u-s filename ........用户ID位..设为无效
+	chmod g-s filename ........组ID位....设为无效
+	若设置用户ID位后，该文件的用户权限域中的第一位变为s，且表示在执行该文件时，进程的有效用户ID发生由该进程的默认有效用户ID变为该文件的所有者的ID
+
+	int access(const char*  pathname,int mode):测试文件是否具有相应的权限
+	在virtual.h中这些函数名前加vir eg.vir_access
+	-------------
+	mode |  说明
+	-------------
+	R_OK   测试读许可权
+	W_OK   测试写许可权
+	X_OK   测试执行许可权
+	F_OK   测试文件是否存在
+	进程对某个文件进程操作时内核检查文件权限是有顺序的：
+	1.若进程的有效用户为root,则允许任何操作
+	2.若进程的有效用户等于文件的所有者(ID相同)，按照该文件所有者的权限判断是否合法
+	3.若进程的有效组或附加组之一等于文件所有者所在组，按照文件所有者所在组的权限判断合法
+	4.按照其他用户具有权限判断操作合法
+	
+	int chmod(cost char* pathname,mode_t mode);(/usr/include/x86_64-linux-gnu/sys/stat.h)
+	int fchmod(int fd,mode_t mode);(/usr/include/x86_64-lilnux-gnu/sys/stat.h)
+	用途：改变指定文件的权限位
+	说明：
+	1.chmod要求是文件或目录的所在位置，fchmod主要针对的是文件
+	2.修改时，进程的有效用户ID必须等于文件的所有者ID，或是root运行的此进程
+	3.mode的值可以是：
+	S_ISUID   设置用户ID 	执行时设置有效用户ID	不使用
+	S_ISGID   设置组ID	执行时设置有效组ID	将在目录中创建新文件的组ID设置为目录的组ID
+	S_ISVTX   粘着位	在交换区保存程序正文
+	S_IRUSR   用户读	许可用户读文件		许可用户在目录中读目录项
+	S_IWUSR   用户写	许可用户写文件		许可用户在目录中创建或删除文件
+	S_IXUSR   用户执行	许可用户执行文件	许可用户在目录中搜索给定路径名
+	S_IRGRP   组读		许可组读文件		许可组读目录项
+	S_IWGRP   组写		许可组写文件		许可组写目录项
+	S_IXGRP   组执行	许可组执行文件		许可组在目录中创建或删除文件
+	S_IROTH   其他读	许可其他读文件		许可其他读目录项
+	S_IWOTH	  其他写	许可其他写文件		许可其他在目录中创建或删除文件	
+	S_IXOTH	  其他执行	许可其他执行文件	许可其他在目录中搜索给定的路径名
+	4.fchmod函数的返回值：
+	EBADF	非法的文件描述符
+	EIO	发生I/O错误
+	EPERM	有效用户ID与文件拥有者不同，进程无权访问修改文件权限
+	EROFS	文件位于只读系统
+	6.chmod函数的返回值：
+	EACCES	给出的文件所处路径没有访问权限
+	EFAULT	路径指向的文件地址错误
+	EIO
+	ELOOP	给出的文件所在路径中符号链接过多
+	ENAMETOOLONG	路径过长
+	ENOENT	文件不存在
+	ENOMEM	内核内存空间不足
+	ENOTDIR 给出的文件所处路径中包含不是目录的部分
+	EPERM
+	EROFS
+
+	int chown(const char*pathname,uid_t owner,gid_t group);(unistd.h)
+	int fchown(int filedes,uid_t owner,gid_t group);(unistd.h)
+	int lchown(const char*pathname,uid_t owner,gid_t group);(unistd.h)
+	在virtual.h中这些函数名前加上virt_ eg.virt_chown
+	用途：更改文件的用户ID和组ID，成功返回0,若出错则返回-1
+	说明：
+	1.若两个参数owner或group中任意一个是-1,则不改变文件所有者或文件所属用户组
+	2.
+
+	int link(const char*pathname,const char*newpath);(unistd.h/virtual.h)
+	在virtual.h中这些函数名前加上virt_ eg.virt_link
+	用途：任何一个文件可以有多个目录项指向其索引节点，创建一个指向现有文件的新目录项
+	说明：
+	1.该函数创建一个新的目录项newpath,它指向pathname指向的文件，若newpath已存在则返回出错
+	2.这是一个原子操作
+	3.大多数的系统规定：只有超级用户才可以创建一个指向目录的新链接，目的是在文件系统中形成循环
+
+	int unlink(const char*pathname);(unistd.h)
+	在virtual.h中这些函数名前加上virt_ eg.virt_unlink
+	用途：删除目录项，并将由pathname索引用的文件链接计数减1,清空这个文件使用的可用的系统资源
+	int remove(const char*pathname);(stdio.h)		
+	在virtual.h中这些函数名前加上virt_ eg.virt_remove
+	用途：删除一个目录中的一个或多个文件或目录，也可以将某个目录及其下的所有文件及子目录均删除
+	共同点：remove的参数为普通文件时等价与unlink
+	差异点：unlink是系统调用，remove是标准库函数
+
+	int rename(const char*oldname,const char*newname);(stdio.h)
+	在virtual.h中这些函数名前加上virt_ eg.virt_rename
+	用途：更名文件或目录
+	说明：
+	1.若newname所指向文件已经存在，则该文件将被删除
+	2.函数成功返回0，失败返回-1
+	3.若oldname是一个文件，若newname是一个目录则会失败;若newname是一个已存在的文件，则会先将该文件删除(rename会负责该操作)，然后为oldname更名为newname;若newname不存在，则为其更名并成功返回0
+	4.若oldname是一个目录，若newname存在且为空，则会先将其删除，然后为oldname更名为newname
+
+	每个文件有三个时间段：
+	at_atime	文件数据的最后访问时间		eg.read 
+	at_mtime	文件数据的最后修改时间		eg.write
+	st_ctime	索引节点状态的最后更改时间	eg.chmod
+	影响索引节点的操作：
+	1.更改用户ID
+	2.更改文件访问权限
+	3.更改文件链接数 
+	
+	int utime(const char*pathname,const struct utimbuf* times);(utime.h)
+	在virtual.h中这些函数名前加上virt_ eg.virt_utime
+	用途：设置存取和修改文件时间
+	说明：
+	1.若times是一个NULL，则存取和修改时间都设为当前时间，但需满足下面二者之一：1进程的有效用户ID必须等于文件的所有者2进程对该文件有写许可
+	2.若times是一个非指针，则存取和修改时间被设置为times所指向的时间，此时进程的有效用户ID必须等于文件的所有者ID，或者进程必须是超级用户的进程
+
+	int mkdir(const char*pathname,mode_t mode);(virtual.h/avfs.h)
+	在virtual.h中这些函数名前加上virt_ eg.virt_mkdir
+	用途：创建一个新目录，其中的.和..两个目录项由系统自动创建
+	说明：
+	1.若不加路径，则表示在当前目录下创建由pathname指定的目录
+	2.若给出路径，则会在该目录下创建一个指定的目录
+	3.保证在当前目录下没有重名
+	4.可创建子目录更有效的组织文件
+	
+	int rmdir(const char*pathname);(unistd.h/virtual.h/avfs.h)	
+	在virtual.h中这些函数名前加上virt_ eg.virt_rmdir
+	用途：删除一个空目录
+	说明：
+	1.若此操作使目录的链接数成为了0,且没有其他进程打开此目录，则释放由此目录占用的空间
+	2.若链接计数为0,但是有其他进程打开了目录，则在rmdir函数返回前，删除.和..目录，此目录不能在创建新文件，但是在最后一个进程关闭之前并不释放此目录，当最后一个进程执行完后，释放此目录所占用的空间

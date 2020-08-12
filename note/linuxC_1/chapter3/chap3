@@ -1,0 +1,475 @@
+					进程属性
+1.ps命令：参考linux命令
+2.获取进程ID：
+	pid_t getpid(void);
+	pid_t 就是int类型
+3.进程真实用户/组，进程有效用户/组：参考第二章文件管理
+4.获取进程的真实用户/组ID：
+	uid_t getuid(void);
+	uid_t getgid(void);
+5.获取进程的有效用户/组ID：(只有当可执行文件设置了"设置用户ID位"/”设置用户组ID位"时才会发生改变)
+	uid_t geteuid(void);
+	uid_t getegid(void);
+	以上五个函数均在unistd.h中且返回值依次为：
+	执行成功返回 进程的ID/当前进程的有效用户/组ID/当前进程的真实用户/组ID
+	失败返回-1,错误原因存于errorno中
+	
+					进程的生命周期
+1.进程的创建 进程状态切换 进程的启动
+2.进程的启动：C程序的启动函数是main,也是进程代码的入口点
+	int main(int argc,char* argv[]);
+	argc:argument count,参数个数
+	argv:argument value,参数的值
+	当内核启动C程序时，会在调用main函数前调用特殊的启动函数来获取main函数地址和传递给main函数的参数，并且将这些信息填写到进程控制块(PCB)中
+3.进程的终止：
+	正常终止：
+		1.从main函数中返回
+		2.从任意代码中调用exit函数或_exit函数
+		3.最后一个线程从其启动例程中返回
+		4.最后一个线程在任意位置调用pthread_exit函数来终止最后一个线程
+	异常终止：
+		1.在任意代码中调用abort函数来产生一个异常终止
+		2.接收到终止信号
+4.Linux下的C程序开发：内核创建进程时会启动一个C程序例程，C程序例程会去加载应用程序到内存并且执行C程序的入口函数(即main函数)，然后main函数去执行用户函数以及一系列代码(各种循环/条件判断等等)，在main函数或用户函数中可能会显式或隐式的调用exit/_exit函数，当调用exit函数后返回到exit函数本身(exit函数是一个Process API),这个API函数就会依次调用预先注册的终止处理函数，完成终止处理函数后，会调用标准I/O清理函数，完成这一系列后在调用_exit函数返回到内核，完成进程的生命周期
+5.终止进程的函数：
+	1.exit函数：
+	void exit(int  status);(stdlib.h)
+	2._exit函数：
+	void _exit(int status);(unistd.h)
+	status是终止进程的返回状态
+	即：这两个函数均会正常的终止一个进程
+	调用_exit函数将会立即返回内核
+	调用exit函数会使操作系统进入进程的处理流程中：
+	1.执行预先注册的终止处理函数
+	2.执行文件I/O操作的善后工作，使得所有缓冲的输出数据被更新到相应的设备
+	3.返回内核
+6.exit与return的区别：
+	1.return 是C语言的关键字，exit是POSIX API函数
+	2.在main函数中，执行return和调用exit函数产生的效果相同
+	3.在子函数中，执行return仅仅从子函数中返回，而调用exit函数会退出当前进程
+7.注册终止处理函数：
+	1.为何需要终止处理函数(?)：当进程终止时，程序可能需要进行一些自身的清理工作，如日志登记，资源释放，网络连接的释放等
+	2.如何注册终止处理函数(?)：通过atexit函数和on_exit函数允许进程注册若干终止处理函数，当进程终止时，这些终止处理函数将会被自动调用，(只有进程正常终止或者隐式显式的调用exit函数时，这些终止处理函数才会被自动调用)
+	int atexit(void (*func)void);无参数的
+  	int on_exit(void (*func)(int,void*),void *arg);有参数的，并且能够指定传递给终止处理函数的参数
+  	均在头文件stdlib.h
+	ANSIC 规定一个进程最多能够注册32个终止处理函数
+	当显式调用或隐式调用exit函数终止进程时(从main函数中返回，最后一个线程退出)，将会回调这些注册的终止处理函数(最先注册的函数最后被回调)
+	显式调用_exit函数终止进程时，将不会回调这些注册的终止函数
+
+	
+
+						进程环境(内存空间布局)
+1.进程的内核空间：PCB
+  进程的用户空间:C程序内存空间的分布
+	由低地址到高地址
+	代码段	数据段	堆  栈  命令行参数与环境变量
+	代码段：CPU执行的代码部分，通常为共享，只读
+	数据段：初始化的数据：包含了程序中需明确赋初值的变量，如全局变量
+		未初始化的数据：程序执行之前，将此段中的数据初始化为0,
+	堆：用于动态分配
+	栈：用于支撑函数调用，存放参数，函数内部的C局部变量等
+	命令行参数与环境变量
+2.每个进程都有自己的环境变量表
+	获取环境变量的方法
+		1.通过extern char **environ(头文件unistd.h)变量访问
+		2.使用char *getenv(const* name);函数(头文件stdlib.h)
+		指定环境变量名称，返回环境变量字符串指针，若没找到，返回空指针
+	设置环境变量的方法
+		1.int putenv(char* str);//stdlib.h
+		直接将环境字符串放到环境变量表中,若字符串已经存在，则覆盖
+		2.int setenv(const char* name,const char* value,int rewrite);
+		将指定的环境变量的值设置为参数指定值(更改环境变量字符串)
+		若name已经存在
+			1.rewrite!=0  删除原来的定义
+			2.rewrite==0  不删除原来的定义
+		3.int unsetenv(const char*name);
+		删除指定的环境变量字符串
+
+						进程创建
+1.linux中创建进程的方式：
+	1.在shell中执行命令或可执行文件
+		由shell进程调用fork函数创建子进程
+	2.在代码(已存在的进程)中调用fork函数创建子进程
+		通过fork函数创建的进程为已经存在进程的子进程
+2.linux中进程ID=0(PID=0)是由内核创建，其他所有进程都是由父进程调用fork函数所创建的
+  linux系统进程0创建子进程(PID=1,init进程)后，进程0就转为交换进程或空闲进程
+  进程1(init进程)是系统中其他所有进程的共同祖先(使用命令pstree可查看系统所有进程)
+3.pid_t fork(void);(unistd.h)(pid_t就是进程ID的类型)
+	返回值：fork函数被调用后将会在子进程和父进程中分别返回
+		在子进程中返回值为0(可知该PID为不合法的，即提示当前运行在子进程中，因为PID=0的进程已经转为交换进程或空闲进程)
+		在父进程中返回值为子进程的实际ID(让父进程掌握所创建子进程的ID号)
+	若是出错返回值为-1
+4.创建子进程的操作就是为其分配内核空间和用户空间
+	子进程是父进程的副本：
+		子进程复制父进程的PCB，数据空间(数据段，堆和栈)
+		父子进程共享正文段(只读)(父子进程执行代码相同，在fork成功返回后分别共享相同的代码指针)
+	子进程父进程继续执行fork函数调用后的代码
+	为提高效率，fork后并不会立即复制父进程数据段，堆和栈，采用了写时复制机制(Copy-on-Write)
+		当父子进程任意之一要修改数据段，堆，栈时，进行复制操作，并且仅复制修改区域
+5。父子进程相同部分：
+	真实用户ID，真实组ID
+	有效用户ID，有效组ID
+	(由于子进程的PCB直接拷贝父进程的PCB的原因)
+	环境变量
+	堆
+	栈
+	打开的文件
+	(由于子进程的数据空间也是直接拷贝父进程的数据空间)
+  父子进程不同部分：
+	fork返回值不同
+	进程ID及父进程ID
+	子进程的tms_utime,tems_stime,tms_cutime,tms_ustime 的值被设置为0
+6.父子进程对共享文件的处理方式：
+	父进程的等待子进程完成，当子进程终止后，文件当前位置已经得到了相应的更新
+	父子进程各自执行不同的程序段，各自关闭不需要的文件
+	父进程希望复制自己(共享代码段，复制数据空间)，但父进程执行相同代码中的不同分支
+	父子进程执行不同的可执行文件(父子进程具有完全不同的代码端和数据空间)
+		子进程从fork函数返回后，立即调用exec类函数执行另外一个可执行文件
+7.vfork用于创建新进程，而新进程目的是执行另外一个可执行文件
+	由于新程序将有自己的地址空间，因此vfork函数不会将父进程的地址空间完全复制到子进程中
+	子进程在调用exec函数或exit函数之前，在父进程的地址空间中运行
+	vfork函数保证子进程先执行，在它调用exec或exit函数后，父进程才会继续被调度执行(父进程处于TASK_UNINTERRUPTIBLE状态)
+
+
+
+
+						获知子进程运行状态改变
+1.当一个进程发生特定的状态变化(进程终止，暂停以及恢复)时，内核向其父进程发送SIGCHLD信号
+	父进程可以选择忽略该信号，也可对信号进行处理(默认处理方式是忽略)
+	父进程可以使用wait或waitpid函数等待子进程状态信息改变，并获取其状态信息
+2.进程在退出之前会释放进程用户空间的所有资源，但是PCB等内核空间资源不会被释放
+	对于已经终止的进程但父进程尚未对其调用wait或waitpid函数的进程称为僵尸进程(TASK_ZOMBIE状态)	
+	当父进程调用wait或waitpid函数后，内核根据情况关闭该进程打开的所有文件，释放PCB(释放内核空间资源)
+3.linux中父子进程的执行是独立的没有关联的
+	如果父进程在子进程终止之前终止，则子进程的父进程将变为init进程，保证每一个进程都有父进程，由init进程调用wait函数进行善后
+4.wait函数：等待获取任意子进程的状态改变信息(如果状态为终止状态则对子进程进行善后处理)
+	pid_t wait(int *statloc);(sys/wait.h)
+	statloc：用于获取子进程的状态改变
+		statloc为空指针：父进程不需要了解子进程的状态信息，只是为了防止子进程称为僵尸进程或因为同步原因需要等待子进程终止
+		statloc为非空指针：则内核将子进程状态改变信息存放在它指向的存储空间
+	返回值：若成功返回状态信息改变子进程ID，出错返回-1
+
+	如果一个进程有几个子进程，那么只要有一个子进程状态改变，wait函数就会返回
+	调用wait函数，然后将其返回的进程ID与期望的进程ID进行比较，若不一致，则保存该进程，并循环调用wait函数,直到等到所期望的子进程ID为止
+   	
+	调用wait函数后，父进程的情况：
+	如果所有子进程都还在运行，则父进程被阻塞(TASK_INTERRUPTIBLE),直到有一个子进程终止或暂停，wait函数才返回
+	如果已经有子进程进入终止或暂停状态，则wait函数会立即返回
+	若该进程没有任何子进程，则立即出错返回-1
+
+  waitpid函数：等待获取某个特定子进程状态改变信息
+	pid_t waitpid(pid_t pid,int*  statloc,int options);(sys/wait.h)
+	返回值：若成功返回状态改变子进程ID，失败返回-1
+	pid:特定子进程的PID
+	pid==-1:相当于wait函数
+	pid>0:等待进程ID为pid的子进程改变状态
+	pid==0:等待其组ID等于调用进程组ID的任意子进程
+	pid<-1:等待其组ID等于pid绝对值的任意子进程 
+	statloc:存放子进程终止状态
+	options:可为0,可为以下常量，
+		WCONTINUED：如果有暂停的进程由于SIGCONT信号(异步信号的原因而恢复)的到来而继续运行，则函数将返回
+		WUNTRACED：如果有处于终止状态的进程，则函数返回
+		WNOHAND：如果没有任何已经终止的子进程则马上返回，函数不等待，返回值为0
+	waitpid函数的特有功能：
+	1.可以等待一个特定的进程的状态改变信息
+	2.可以实现非阻塞的等待操作，有时希望取得子进程的状态改变信息，但不希望父进程阻塞来去一直等待子进程状态改变
+	3.支持作业控制(进程组控制)
+5.子进程状态改变信息包含了多种类型的信息，可以通过系统提供的宏来快速解析子进程的状态
+	WIFEXITED(statloc):子进程正常终止时，该宏为真，对此可进一步执行WEXITSTATUS(statloc),获取子进程传递给exit,_exit函数参数的低8位
+	WIFSIGNALED(statloc):当子进程异常终止时，该宏为真，对此可进一步执行WTERMSTG(statloc),获取使子进程终止的信号编号
+	WIFSTOPPED(statloc):当子进程暂停时，该宏为真，对此可进一步执行WSTOPSIG(statloc),获取使子进程暂停的信号编号
+	WIFCONTINUED(statloc):若子进程在暂停后已经继续，则该宏为真
+
+
+
+						在进程中运行可执行文件	
+1.进程调用exec系列函数在进程中加载执行另外的一个可执行文件
+exec系列函数替换了当前进程的正文段，数据段，堆和栈(来源于加载的可执行文件)，并初始化未初始化的数据
+执行exec系列函数后(重新加载的函数从哪里执行?)(答案是:)从加载可执行文件的main函数开始重新执行
+exec函数并没有创建新的进程，调用exec函数后其进程ID并没有改变，已经打开的文件的描述符不变
+2.exec系列函数:execl execle execlp execv execve execvp(unistd.h)
+	l:表示list,每个命令行参数都在说明为一个独立的参数
+	v:表示vector,命令行参数放在数组中
+	e:表示由函数调用者提供环境变量表
+	p:表示通过环境变量PATH来指定路径，查找可执行文件
+
+	int execl(const char*pathname,const char*arg0,...,NULL);
+	pathname:要执行程序的绝对路径名	
+	可变参数：要执行程序的命令行参数，以空指针作为参数的结束
+	返回值：成功不返回，出错返回-1
+ 
+	int execv(const char*pathname,char*const argv[]);
+	argv：数组指针维护的程序命令行参数列表，概数组的最后一个成员必须为空指针
+
+	int execlp(const char*file,const char*arg0,....,NULL);
+	file:在PATH环境变量中查找的程序名
+
+
+						线程控制
+1.进程体现的两个概念：资源(用户空间)，调度/执行
+  线程是进程内的独立执行代码的实体和调度单元
+  一个进程内的所有线程共享进程的很多资源
+	线程私有：
+		线程ID
+		寄存器集合(寄存器保存当前线程执行的上下文环境)
+		PC指针(PC指针用来标识当前进程执行的位置)
+		栈(用于实现函数调用，存放局部变量(局部变量是私有的))
+		信号掩码
+		优先级
+	线程间共享：
+		进程指令
+		全局变量
+		打开的文件
+		信号处理程序
+		当前工作目录
+		用户ID和组ID
+2.进程与线程的比较：
+	1.调度 传统操作系统中，进程是拥有进程和独立调度的基本单位
+	2.拥有资源 无论是传统操作系统还是设有线程的操作系统，进程都是拥有资源的基本单位，线程不拥有资源(拥有资源比较少)，线程可以访问其隶属进程的系统资源
+	3.并发性 不仅进程之间可以并发执行，多个线程之间也可并发执行，提高系统吞吐量
+	4.系统开销 系统创建或撤销进程的开销远大于创建或撤销线程的开销，进程切换的开销远大于线程切换
+	5.地址空间与其他资源(如打开的文件) 进程的地址空间相互独立，同一个进程中的各线程间共享进程的资源
+	6.通信 进程间通信需要进程同步互斥手段，线程间可以直接读/写进程数据段(如全局变量)来通信
+	7.没有通过代码显示创建线程的进程，可以看作只有一个(主)线程的进程
+	8.线程的层次关系，执行顺序并不明显，
+3.控制操作	进程操作API	线程操作API
+  创建		fork,vfork	pthread_create
+  终止		   exit		pthread_exit
+  等待		wait,waitpid 	pthread_join
+  读取ID	   getpid	pthread_self
+	每一个线程都有一个ID，ID只在该线程所属进程中唯一(进程ID在系统中是唯一的)
+	线程ID类型：pthread_t (/usr/include/bits/pthreadtypes.h)
+	typedef unsigned long int pthread_t;
+	
+	pthread_t pthread_self();(pthread.h)
+	功能：可调用线程获取自己的线ID
+	返回值：返回调用线程自身的ID
+
+	int pthread_create(pthread_t *restrict tidp,
+			const pthread_attr_t *restrict attr,
+			void*(*start_rtn)(void*),
+			void*restrict arg);
+	调用该函数的线程是所创建线程的父线程
+	tidp:指向线程ID的指针,当函数成功返回时将存储所创建的子线程ID
+	attr:用于指定线程属性,(默认线程属性则传入空指针即可)
+	start_rtn:线程的启动例程函数指针,创建的线程首先执行start_rtn函数代码(可以采用其他函数)
+	arg:向线程的启动例程函数传递信息的参数
+	返回值：成功返回0,出错返回各种错误码
+
+	线程的终止方式：	
+	1.线程中启动例程函数中返回，返回值作为线程的退出码
+	2.线程被同一进程中的其他线程取消
+	3.线程在任意函数中调用pthread_exit函数终止执行
+	
+	void pthread_exit(void*rval_ptr);(pthread.h)
+	rval_ptr:该指针将参数传递给pthread_join函数(即传递给等待子线程结束的父线程)
+	线程退出时需要传递给父线程的参数
+
+	int pthread_cancel(pthread_t tid);(pthread.h)
+	线程调用该函数可以取消同一进程中的其他线程
+	成功返回0，出错返回错误编号
+	默认下，该函数的效果与被取消线程自身调用pthread_exit函数(参数为PTHREAD_CANCELED)
+	线程可以选择忽略取消方式或者控制取消方式
+	该函数只是提出请求，并不等待线程终止
+
+	
+	父线程等待子线程终止(只有终止没有其他状态)
+	int pthread_join(pthread_t thread,void**rval_ptr);
+	调用该函数的父线程将一直被阻塞，直到指定子线程终止
+	成功返回0,失败返回错误编号
+	thread:需要等待的子线程ID
+	rval_ptr:若不关心线程返回值，可直接设为空指针
+		若线程从启动例程返回，rval_ptr将包含返回码
+		若线程被取消，rval_ptr指向的内存单元置为PTHREAD_CANCELED
+		若线程通过调用pthread_exit函数终止，rval_ptr就是调用pthread_exit时传入的参数
+4.线程通信:
+	使用信号量进行同步
+	(semaphore.h)
+	int sem_init(sem_t *sem,int pshared,unsigned int value);
+	int sem_wait(sem_t *sem);
+	int sem_post(sem_t *sem);
+	int sem_destroy(sem_t *sem);
+	使用互斥量进行同步
+	(pthead.h)
+	int pthread_mutex_init(pthread_mutex_t *mutex,const pthread_mutexattr_t);
+	int pthread_mutex_lock(pthread_mutex_t *mutex);
+	int pthread_mutex_unlock(pthread_mutex_t *mutex);
+	int pthread_mutex_destroy(pthread_mutex_t *mutex);
+	线程属性
+		
+
+
+
+
+							进程间通信：管道
+	进程间通信机制：同一主机进程间通信机制 不同主机进程间通信机制
+	同一主机进程间通信机制：
+		UNIX进程间通信机制：管道 命令管道 信号
+		XSI IPC机制：信号量级 共享内存 消息队列
+		(IPC:Inter-Process Communication 进程间通信)
+	不同主机进程间通信机制：
+		RPC：远程过程调用
+	
+	管道：从一个进程连接数据流到另一个进程
+	未命名管道	
+	1.      高级的popen函数
+		FILE *popen(const char *command,const char *open_mode);
+		int pclose(FILE *stream_to_close);
+		头文件：stdio.h
+		command:要运行的程序名和相应的参数
+		open_mode:只有“r”或“w”
+		"r":popen函数中要运行程序的输出可以被调用popen函数的程序通过fread函数所读
+		"w":popen函数中要运行程序的输入可以被调用popen函数的程序通过fwrite函数所写
+		该函数返回FILE*文件流指针
+		通过管道在两个程序之间传递数据的最简单的方法
+		
+		popen函数中实现：popen函数的调用首先启动shell,然后将command字符串作为一个参数传递给shell,即启动要运行的程序
+				即每一个popen调用需要启动两个进程(shell与要运行的程序)，成本略高
+					
+		底层的pipe函数
+		int pipe(int file_descriptor[2]);
+		头文件：unistd.h
+		参数是一个有两个整型类型的文件描述符组成的数组的指针
+		file_descriptor[0]:从管道读数据,整型的文件描述符,通过read函数读
+		file_descriptor[1]:向管道写数据,整型的文件描述符,通过write函数写
+		功能：该函数在数组中填上两个新的文件描述符后返回0,失败返回-1,设置errno表明错误原因
+		通过该函数的使用可在父子进程间传递数据(fork,exec函数)
+		
+		当读写数据都没有关闭的管道,若没有数据可读,则read将被阻塞
+		对一个已经关闭写数据的管道做read调用将返回0而不是阻塞
+		只有管道的读写文件描述符都关闭时,管道才算关闭,此时对管道的read调用将失败
+		
+		可通过dup函数将管道用作标准输入和标准输出
+		int dup(int file_descriptor);
+		int dup2(int file_descriptor_one,int file_descriptor_two);
+		头文件：unistd.h
+		功能：打开一个新的文件描述符 
+		对于dup函数来说：
+			与open类似，但是dup函数创建的新的文件描述符与作为它的参数的那个已有文件描述符指向同一个文件或管道
+			而且新的文件描述符总是取最小的可用值
+			(eg.标准输入的文件描述符是0,首先关闭文件描述符0,然后调用dup函数,那么新的文件描述符就是0,
+			即标准输入就会改为指向一个我们传递给dup函数的文件描述符所指向的管道或文件)
+		对于dup2函数来说：
+			所创键的新的文件描述符或者与参数file_descriptor_one相同，或者是一个大于该参数的可用值		
+
+	命名管道：FIFO	
+	2.
+		命令：mkfifo filename / mknod filename p
+		int mkfifo(const char*filename,mode_t mode);
+		int mknod(const char*filename,mode_t mode | S-IFIFO,(dev_t) 0);
+		头文件：sys/stat.h  sys/types.h		
+		功能：创建一个命令管道
+		使用open函数打开FIFO文件,参数O_RDONLY,O_WRONLY,O_NONBLOCK的组合方式
+		O_NONBLOCK会改变open函数返回文件描述符进行的读写请求的处理方式
+		close函数并不会受O_NONBLOCK标志影响
+		程序不能以O_RDWR模式打开FIFO文件进行读写,通常使用管道只是为了单向传递数据
+		若要实现双向传递,最好使用一对FIFO或管道,一个方向使用一个
+		若一个管道以读写方式打开,进程就会从这个管道读回它自己的输出
+		可实现进程间通信,客户/服务器应用程序等
+
+		open(const char *path,O_RDONLY); 
+		这种情况下,open调用将阻塞,除非有一个进程以写的方式打开同一个FIFO,否则它不会返回
+
+		open(const char *path,O_RDONLY | O_NONBLOCK);
+		即使没有其他进程以写方式打开同一个FIFO,open调用也会成功并立刻返回
+		
+		open(const char *path,O_WRONLY);
+		这种情况下,open调用将阻塞,直到有一个进程以读的方式打开同一个FIFO,否则它不会返回
+		
+		open(const char *path,O_WRONLY | O_NONBLOCK);
+		这个函数调用总是立刻返回,
+		若没有进程以读的方式打开FIFO文件,open调用将返回一个错误-1并且FIFO也不会被打开
+		若确实有一个进程以读方式打开FIFO文件,那就可以通过它返回的文件描述符对这个FIFO文件进行读写操作
+
+	信号量：(sys/sem.h)
+	3.
+		定义：它是一个特殊的变量,它只允许对它进行等待和发送信号这两种操作
+		P(信号量变量)：用于等待
+		V(信号量变量)：用于发送信号
+		来自荷兰语单词：passeren(传递)和vrijgeven(给予或释放)
+		临界区域(代码)：需要确保只有一个进程(或一个执行线程)可以进入这个临界代码并拥有对资源独占式的访问权
+		二进制信号量：只能取0和1的变量	
+		通用信号量：可以取多个正整数值的变量
+		P(sv)：若sv>0,则sv--;若sv=0,则挂起该进程的执行(原子操作)
+		V(sv)：若有进程因等待sv而被挂起,则让它恢复运行;若没有,则sv++(原子操作)
+		伪代码：
+		sv=1;
+		P(sv);
+		critical code section
+		V(sv);
+		nocritical code section
+
+		int semget(key_t key,int num_sems,int sem_flags);
+		int semctl(int sem_id,int sem_num,int command,...);
+		int semop(int sem_id,struct sembuf *sem_ops,size_t num_sem_ops);
+		头文件:sys/sem.h
+
+		semget功能：创建一个新信号量或取得一个已有信号量的键
+		key:整数值,不相关的进程可以通过它访问同一个信号量
+		    程序对所有信号量的访问都是间接的,它先提供一个键,再由系统生成一个相应的信号量标识符
+		num_sems:指定需要的信号量的数目,几乎总是取1
+		sem_flags:低9个比特是该信号量的权限,其作用类似于文件的访问权限
+			  IPC_CREAT表示创建一个新信号量,若函数用不到该标志,则被悄悄忽略
+			  IPC_CREAT和IPC_EXCL联合表示创建一个惟一的，新的信号量，若该信号量已存在，则返回一个错误
+		成功返回一个信号量标识符,失败返回-1
+	
+		sem_id:由semget函数返回的信号量标识符
+
+		semctl功能:用来直接控制信号量信息
+		sem_num:信号量编号,一般为0,表示这是第一个也是唯一的一个信号量,若需要用到成组信号量时,则需要使用这个参数
+		command:将要采取的动作
+			SETVAL:用来把信号量初始化为一个已知的值,该值通过union semun中的val成员设置,作用是在信号量第一次使用前对其设置
+			IPC_RMID:用于删除一个已经无需继续使用的信号量标识符
+		若有第四个参数则是一个union semun结构
+		union semun {
+			int val;
+			struct semid_ds *buf;
+			unsigned short *array;
+		}
+		函数根据command的不同返回不同的值,对于SETVAL和IPC_RMID,成功返回0,失败返回-1
+
+		semop功能：改变信号量的值
+		struct sembuf{
+			short sem_num;	信号量编号,一般为0,除非使用一组信号量	
+			short sem_op;   信号量在一次操作中需要改变的数值,通常用到两个值：+1表示V操作,-1表示P操作
+			short sem_flg;  通常设为SEM_UNDO,表示操作系统跟踪当前进程对这个信号量的修改情况,若该进程在没有释放信号量下终止,则操作系统会自动释放该进程的信号量
+		}
+	
+	内存共享：(sys/shm.h)  (share memory)
+		int shmget(key_t key,size_t size,int shmflg);
+		void *shmat(int shm_id,const void *shm_addr,int shmflg);
+		int shmdt(const void *shm_addr);
+		int shmctl(int shm_id,int command,struct shmid_ds *buf);
+		
+	
+	消息队列：(sys/msg.h)
+		
+	    
+		
+
+	
+
+
+	
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

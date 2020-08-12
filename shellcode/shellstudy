@@ -1,0 +1,412 @@
+#! /bin/bash
+#bash 是sh 的增强版，若使用sh报错时，可以使用bash
+
+#定义变量方式 变量名=变量值  等号两边不能有空格
+#变量名只能使用英文字母，数字，下划线(不能以数字开头)，不能使用关键字
+my_name=van
+
+#使用一个定义过的变量方式 需在变量前加$
+#最好在变量左右加上花括号 有助于帮助解释其识别变量的边界
+echo "变量my_name的值是："${my_name}
+
+#只读变量 使用readonly命令可将变量定义为只读变量 只读变量的值不能被改变
+# readonly my_name
+
+#删除变量 使用unset可以删除变量 但是不能删除只读变量 删除后不能再次使用
+# unset my_name
+
+#此处没有任何输出
+# echo ${my_name}
+
+#变量类型：局部变量 环境变量 shell变量
+
+#shell 字符串：可使用单引号 双引号 不使用引号
+#单引号字符串的限制：
+#1.单引号中任何字符都会原样输出，即变量是无效的
+#2.单引号中不能出现单独的一个单引号(即使对此单引号使用转义字符也不行)，但可成对出现，作为字符串拼接使用
+your_name='soda'
+echo "变量your_name的值是："${your_name}
+str='hello,'${my_name}'!'' hello'','${your_name}'!'
+echo "变量str的值是："${str}
+
+#双引号字符串的优点：
+#1.双引号中可有变量
+#2.双引号中可有转义字符
+her_name="hi,Ronnie Antonio O'sullivan \nmy name is $my_name,his name is $your_name !"
+echo "变量her_name的值是："${her_name}
+
+#获取字符串长度
+echo "变量my_name值的长度是："${#my_name}
+echo "变量your_name值的长度是："${#your_name}
+echo "变量str值的长度是："${#str}
+echo "变量her_name值的长度是："${#her_name}
+
+#截取字符串
+echo "从变量her_name的值中的第四个字符开始向后截取25个字符："${her_name:3:25} 
+
+
+#查找字符在字符串中的位置  
+#输出6
+echo "查找字符v所在字符串(下标以1开始)的下标 哪个字母先出现计算哪个后面的字符忽略："`expr index "$her_name" v`
+
+#shell 数组 不支持多维数组 仅支持一维数组 并且没有限定数组的大小 下标从0开始
+#定义数组 括号表示数组 数组元素用“空格”隔开 可以不使用连续的下标 下标范围无限制
+array_name=(value0 value1 value2 value3 "value4")
+array_name[6]=value6
+array_name[n]=valuen
+
+#读取数组
+echo "数组array_name的第一个元素是："${array_name[0]}
+echo "数组array_name的第七个元素是："${array_name[6]}
+#使用@读取所有元素
+echo "数组array_name的所有元素依次是："${array_name[@]} 
+echo ${array_name[*]}
+
+#获取数组长度
+echo "数组array_name的长度(即元素个数)是："${#array_name[@]} ${#array_name[*]}
+#获取单个数组元素长度
+echo "单个数组元素[n]的长度是："${#array_name[n]}
+
+#shell注释
+#以#号开头的行会被解释其忽略
+#多行注释 EOF可使用其他符号 例如！等等
+:<<EOF
+注释内容
+注释内容
+注释内容
+注释内容
+EOF
+:<<ok
+注释内容
+注释内容
+注释内容
+ok
+
+#shell 传递参数 执行shell脚本时可向脚本传递参数 脚本内获取参数的格式：$n n代表哪一个参数  若参数中有空格 应使用单引号或双引号将参数括起来
+echo "执行的文件名：$0"
+echo "第一个参数为：$1"
+echo "第二个参数为：$2"
+
+#特殊字符处理参数
+echo "传递到脚本的参数个数是："$#   #传递到脚本的参数个数
+echo "以一个单字符串显示所有向脚本传递的参数："$*   #以一个单字符串显示所有向脚本传递的参数
+echo "以一个单字符串显示所有向脚本传递的参数："$@   #以一个单字符串显示所有向脚本传递的参数
+#$*与$@的区别
+#1.相同点：都是引用所有参数
+#2.不同点：只有在双引号中体现出来
+echo "以下体现了\$*与\$@之间的区别："
+echo "\$*:"
+for i in "$*";do 
+	echo ${i}
+done
+echo "\$@:"
+for i  in "$@";do 
+	echo ${i}
+done
+
+echo "脚本允许的当前进程ID号是："$$   #脚本运行的当前进程ID号
+
+#此行并没有输出ID号
+echo "后台运行的最后一个进程的ID号： "$!   #后台运行的最后一个进程的ID号
+echo "此处的ID号并没显示"
+
+#基本运算符：算数运算符 关系运算符 布尔运算符 字符串运算符 文件测试运算符
+#条件表达式要放在放括号内并且之间要有空格 eg. [ $a == $b ]
+#在[]表达式中,不支持< >(若使用需加转义字符) && ||符号
+#在[[]]表达式中，支持< > && || (不再使用-a -o)
+
+
+#算数运算符：+ - * / %    =(赋值)   ==  != (用于比较两个数字)
+expr 3 + 4
+
+#关系运算符：一下结果是则表示成功并返回true
+#-eq 检测两个数是否相等(equal)
+#-ne 检测两个数是否不等(not equal)
+#-gt 检测左边的数是否大于右边的数(greater than)
+#-lt 检测左边的数是否小于右边的数(less than)
+#-ge 检测左边的数是否大于等于右边的数(greater than or equal)
+#-le 检测左边的数是否小于等于右边的数(less than or equal)
+a=10
+b=20
+if [ $a -eq $b ]
+then 
+	echo "$a -eq $b : a 等于 b"
+else
+	echo "$a -eq $b : a 不等于 b"
+fi
+ 
+#布尔运算符：
+#! 非
+#-o 或 
+#-a 与
+
+#逻辑运算符:只能存在[[]]这种结构中
+#&& 逻辑的AND
+#|| 逻辑的OR
+if [[ $a -lt 100 && $b -gt 100 ]]
+then
+	echo "返回 true"
+else
+	echo "返回 false"
+fi
+
+#字符串运算符：以下结果是表示成功并返回true
+#=  检测两个字符串是否相等
+#!= 检测两个字符串是否不相等
+#-z 检测字符串长度是否为0
+#-n 检测字符串长度是否不为0
+#$  检测字符串是否为不空
+
+c="abc"
+if [ -n "$c" ]
+then
+	echo "$c 的长度不为0"
+else
+	echo "$c 的长度为0"
+fi
+if [ $c ]
+then
+	echo "$c 不为空"
+else
+	echo "$c 为空"
+fi
+
+#文件测试运算符：测试文件的各种属性 以下结果是表示成功并返回true
+#-e 检测文件(包括目录)是否存在
+#-s 检测文件是否为不空(文件大小是否大于0)
+
+#-b 检测文件是否是块设备文件
+#-c 检测文件是否是字符设备文件
+#-d 检测文件是否是目录
+#-f 检测文件是否是普通文件(既不是目录，也不是设备文件)
+#-p 检测文件是否是有名管道
+#-S 检测文件是否是socket
+#-L 检测文件是否存在并且是一个符号链接
+
+#-u 检测文件是否设置了SUID位
+#-g 检测文件是否设置了SGID位
+#-k 检测文件是否设置了粘着位
+#-r 检测文件是否可读
+#-w 检测文件是否可写
+#-x 检测文件是否可执行
+
+
+#shell echo 命令
+#显示普通字符串 显示转义字符 显示变量 双引号可以省略
+echo "it is a test"
+echo  it is a test
+echo "\"it is a test \""
+read -p "请输入一个名字：" -s name
+echo "$name it is a test"
+echo "oook! \n"
+echo -e "oook \n"  #-e 开启转义
+echo -e "oook \c"  #\c 不换行
+echo it is a test
+#显示结果定向至文件
+touch myfile
+echo "it is a test" >> myfile
+#原样输出字符串
+echo '$name\"'
+#显示命令结果 反引号
+echo `date`
+echo it is ok; echo it is\'t ok
+:<<sum
+	能否引用变量	能否引用转义字符   能否引用文本格式符(如换行符，制表符)
+单引号	    否			否		否
+双引号	    能			能		能 	
+无引号	    能			能		否
+sum
+
+
+#shell printf 命令
+#printf format-string [arguments....]
+#format-string:格式控制字符串
+#arguments:参数列表
+#单引号与双引号效果一样 
+printf "hello,shell\n"
+printf "%s  %s  %d\n" van  male 65
+printf 'hello,shell\n'
+#没有引号也可输出
+printf %s svan
+#format-string (下面的%s以及"%s %s %s\n")可被重用
+printf %s van svan 
+printf "\n"
+printf "%s %s %s\n" a b c d e f
+#若没有参数列表 %d使用0代替输出 %s使用NULL代替输出 
+printf "%s and %d\n"
+#printf的转义序列
+#\a 警告字符 
+#\b 后退
+#\c 不显示输出结果中任何结尾的换行字符(只在%b格式下有效)
+#\f 换页
+#\n 换行
+#\r 回车 
+#\t 水平制表符 
+#\v 垂直制表符
+#\\ 字面上的反斜杠字符
+#不换行
+printf "hi \a"
+#%b：补充格式符 相对应的参数被视为含有要被处理的转义序列的字符串
+#输出a之后会输出换行符
+printf "ooook:<%b>\n" "a\nb"
+
+#shell test 命令 
+#用于检查某个条件是否成立 可进行数值，字符，文件三方面的测试
+
+#shell 流程控制
+:<<num1
+	if condition
+	then
+		command1
+		command2
+		.....
+	fi
+num1
+:<<num2
+	if condition
+	then	
+		command1
+		command2
+		.....
+	else
+		command
+		.....
+	fi
+num2
+:<<num3
+	if condition1
+	then
+		command1
+		command2
+		.....
+	elif condition2
+	then
+		command
+		.....
+	else
+		command
+		.....
+	fi
+num3
+:<<num4
+	写成一行的if语句
+	if condition ;then command;fi
+num4
+:<<num5
+	for var in item1 item2 .... itemN
+	do
+		command1
+		command2
+		......
+	done
+当变量值在列表中 for循环执行依次所有命令 使用变量名获取列表中的当前取值
+in 列表可包含替换，字符串和文件名
+in 列表可选的，若不使用in 列表，则for循环使用命令行的位置参数
+num5
+:<<num6
+	写成一行的for语句
+	for var in item1 item2 ...itemN;do command1;command2...done;
+num6
+:<<num7
+	while condition
+	do 
+		command
+
+	done
+num7
+:<<num8
+	无限循环
+	while :
+	do 
+		command
+	done
+	while true
+	do 
+		command
+	done
+	for ((;;))
+num8
+:<<num9
+	until condition
+	do 	
+		command
+	done
+循环一系列命令直到条件为true时停止
+num9
+:<<num10
+	case 值(可为变量或常数) in
+	模式1)
+		command1
+		command2
+		....
+		commmandN
+		;;
+	模式2)
+		command1
+		command2
+		....
+		commandN
+		;;
+	esac
+模式支持正则表达式
+两个分号(;;)表示break,即执行结束
+若无一匹配模式 使用*号捕获该值
+num10
+:<<num11
+	break：跳出所有循环
+	continue：仅跳出当前循环 不会跳出所有循环
+num11
+
+#shell 函数
+#用户可以定义函数 在shell脚本中随便调用
+:<<function-format
+	[ function ] funname [()]
+	{
+		action;
+		[return int;]
+	}
+分号是语句的分隔符 当一行上只有一条语句时不用加分号 若一行上有多条语句时需要加分号
+[]是可选内容 即可加可不加
+若不加return返回 则将以最后一条命令运行结果(命令是否成功执行)作为返回值
+return 后跟数值n(0-255)
+函数返回值在调用该函数后通过$?来获得
+所有函数使用前必须定义 调用函数仅使用其函数名即可
+调用函数并向其传递参数时 可通过$n的形式来获取参数的值 $1表示第一个参数...
+当n>=10时 使用${n}来获取
+特殊字符处理参数：
+$#:
+$*:
+$@:
+$$:
+$!:
+$-:显示shell使用的当前选项，与set命令功能相同
+$?:显示最后命令的退出状态 0表示没有错 其他任何值表示有错误
+function-format
+
+myreturn()
+{
+	echo van is van ;
+	return 0;
+}
+if myreturn
+then 
+	echo true
+else
+	echo false
+fi
+
+#shell 文件包含
+#shell 可以包含外部脚本 可方便的封装一些公用的代码作为一个独立的文件 
+:<<usage
+. filename 
+或者
+source filename
+包含filename文件 此文件不需要可执行权限
+usage
+#source file.sh
+. file.sh
+echo "a=$a"
+printf "b=%d\n" $b
+
+#shell 输入/输出重定向
+
